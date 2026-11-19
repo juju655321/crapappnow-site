@@ -6,6 +6,7 @@
   const CACHE_TTL_MS = 15 * 60 * 1000;
   const CACHE_PREFIX = "crapapp-cache-v1:";
   const FETCH_TIMEOUT_MS = 8000;
+  const REFUGE_TIMEOUT_MS = 20000; // Refuge Restrooms answers slowly at busy times
   const OVERPASS_SERVERS = [
     "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
@@ -22,6 +23,14 @@
   const listEl = $("list");
   const sheet = $("sheet");
   const handle = $("sheet-handle");
+  const sheetTop = $("sheet-top");
+  const sizeBtn = $("sheet-size");
+  const sheetScroll = $("sheet-scroll");
+  const sheetTitle = $("sheet-title");
+  const placeForm = $("place-form");
+  const placeInput = $("place");
+  const placeGo = $("place-go");
+  const matchesEl = $("matches");
 
   const map = L.map("map", { zoomControl: false, attributionControl: true })
     .setView([CHARLESTON.lat, CHARLESTON.lon], 12);
@@ -48,7 +57,7 @@
   }
 
   function setBusy(busy) {
-    [panic, gpsBtn, demoBtn].forEach((b) => { b.disabled = busy; });
+    [panic, gpsBtn, demoBtn, placeGo].forEach((b) => { b.disabled = busy; });
     statusEl.setAttribute("aria-busy", busy ? "true" : "false");
   }
 
@@ -299,7 +308,7 @@
   async function queryRefuge(lat, lon) {
     const url = "https://www.refugerestrooms.org/api/v1/restrooms/by_location.json?lat=" +
       encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lon) + "&per_page=50";
-    const response = await fetchWithTimeout(url, { method: "GET" }, FETCH_TIMEOUT_MS);
+    const response = await fetchWithTimeout(url, { method: "GET" }, REFUGE_TIMEOUT_MS);
     if (!response.ok) throw new Error("Refuge returned " + response.status);
     const rows = await response.json();
     if (!Array.isArray(rows)) throw new Error("Invalid Refuge response");
@@ -504,19 +513,22 @@
       meta.textContent = metaLine(item, distance);
       card.append(meta);
       renderBadges(card, item);
-      const rating = document.createElement("p");
-      rating.className = "vote-note";
-      rating.textContent = score >= 0
-        ? "Your rating on this device: " + (score ? "🧻".repeat(score) : "0")
-        : "Not rated on this device yet";
-      card.append(rating);
+      const rateRow = document.createElement("div");
+      rateRow.className = "rate-row";
+      const rateLabel = document.createElement("span");
+      rateLabel.className = "rate-label";
+      rateLabel.textContent = score >= 0 ? "🧻 You: " + score + "/5" : "🧻 Rate:";
+      rateLabel.title = "Toilet-paper rating, saved on this device only";
+      rateRow.append(rateLabel);
       const ratings = document.createElement("div");
       ratings.className = "ratings";
-      ratings.setAttribute("aria-label", "Your local rating for " + displayName(item));
+      ratings.setAttribute("role", "group");
+      ratings.setAttribute("aria-label", "Your local toilet-paper rating for " + displayName(item) + ", 0 to 5");
       for (let i = 0; i <= 5; i++) {
         const b = document.createElement("button");
         b.type = "button";
-        b.textContent = i ? ("🧻 " + i) : "0";
+        b.textContent = String(i);
+        b.setAttribute("aria-label", i + " of 5");
         b.setAttribute("aria-pressed", score === i ? "true" : "false");
         b.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -526,7 +538,8 @@
         });
         ratings.append(b);
       }
-      card.append(ratings);
+      rateRow.append(ratings);
+      card.append(rateRow);
       const actions = document.createElement("div");
       actions.className = "actions";
       const show = document.createElement("button");
@@ -538,7 +551,9 @@
       });
       const dir = document.createElement("button");
       dir.type = "button";
-      dir.textContent = "🧭 " + directionsLabel();
+      dir.textContent = "🧭 Directions";
+      dir.title = directionsLabel();
+      dir.setAttribute("aria-label", directionsLabel());
       dir.addEventListener("click", (event) => {
         event.stopPropagation();
         window.open(directionsUrl(lat, lon), "_blank", "noopener");
@@ -570,12 +585,24 @@
 
   function setSheet(state) {
     sheet.dataset.state = state;
+    if (sizeBtn) {
+      sizeBtn.textContent = state === "full" ? "Smaller ▼" : "See all ▲";
+      sizeBtn.setAttribute("aria-expanded", state === "full" ? "true" : "false");
+    }
     requestAnimationFrame(updateMapPadding);
   }
 
   /* ---------- search ---------- */
-  async function search(lat, lon, label) {
+  let placeLabel = "";
+  async function search(lat, lon, label, place) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    placeLabel = label === "place" ? (place || "") : "";
+    if (label !== "place") {
+      matchesEl.hidden = true;
+      matchesEl.replaceChildren();
+    }
+    sheetTitle.textContent = label === "place" ? "Restrooms near " + shortPlace(placeLabel) : "Nearby restrooms";
+    sheetScroll.scrollTop = 0;
     const version = ++searchVersion;
     searched = true;
     lastSearchOk = false;
@@ -597,7 +624,7 @@
           fillColor: "#3db8a0",
           fillOpacity: 0.95,
           weight: 2
-        }).bindPopup(label === "gps" ? "You are here" : "Search center");
+        }).bindPopup(label === "gps" ? "You are here" : (placeLabel || "Search center"));
         youMarker.addTo(layer);
       }
       listEl.replaceChildren();
@@ -655,9 +682,9 @@
     } else if (!all.length) {
       setStatus("No mapped restrooms found within 6 km. Try another location.");
     } else if (osm == null && refuge != null) {
-      setStatus(all.length + " restroom" + (all.length === 1 ? "" : "s") + " found nearby. OpenStreetMap is busy, so these come from Refuge Restrooms.");
+      setStatus(all.length + " restroom" + (all.length === 1 ? "" : "s") + " found" + nearWhat() + ". OpenStreetMap is busy, so these come from Refuge Restrooms.");
     } else {
-      setStatus(all.length + " restroom" + (all.length === 1 ? "" : "s") + " found nearby, nearest first.");
+      setStatus(all.length + " restroom" + (all.length === 1 ? "" : "s") + " found" + nearWhat() + ", nearest first.");
     }
     render({ fit });
     if (lastSearchOk && all.length && window.innerWidth < 900 && sheet.dataset.state === "peek") {
@@ -687,41 +714,189 @@
     );
   }
 
-  /* ---------- sheet drag ---------- */
+  /* ---------- place search (Nominatim, Photon fallback) ---------- */
+  // Nominatim usage policy: searches only on submit (no autocomplete), at most 1 request per second,
+  // results cached, attribution shown. Requests identify the app by its Referer (crapappnow.com) on the
+  // web and by the app's User-Agent suffix ("CRAPAPPNOW/…") in the Android and iOS apps.
+  const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+  const PHOTON = "https://photon.komoot.io/api/";
+  const GEO_CACHE_PREFIX = "crapapp-geo-v1:";
+  const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  let lastGeoAt = 0;
+
+  function nearWhat() {
+    return placeLabel ? " near " + shortPlace(placeLabel) : " nearby";
+  }
+  function shortPlace(name) {
+    const parts = String(name || "").split(",").map((x) => x.trim()).filter(Boolean);
+    return parts.slice(0, 2).join(", ") || "this place";
+  }
+  function readGeoCache(q) {
+    try {
+      const raw = localStorage.getItem(GEO_CACHE_PREFIX + q);
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      if (Date.now() - v.at > GEO_CACHE_TTL_MS) return null;
+      return v.results;
+    } catch (_) { return null; }
+  }
+  function writeGeoCache(q, results) {
+    try { localStorage.setItem(GEO_CACHE_PREFIX + q, JSON.stringify({ at: Date.now(), results })); } catch (_) {}
+  }
+  async function politeWait() {
+    const wait = lastGeoAt + 1100 - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastGeoAt = Date.now();
+  }
+  async function geocodeNominatim(q) {
+    await politeWait();
+    const url = NOMINATIM + "?format=jsonv2&limit=5&addressdetails=0&q=" + encodeURIComponent(q) +
+      "&accept-language=" + encodeURIComponent(navigator.language || "en");
+    const res = await fetchWithTimeout(url, { method: "GET", referrerPolicy: "strict-origin-when-cross-origin" }, FETCH_TIMEOUT_MS);
+    if (!res.ok) throw new Error("Nominatim " + res.status);
+    const rows = await res.json();
+    if (!Array.isArray(rows)) throw new Error("Bad Nominatim response");
+    return rows.map((r) => ({ lat: Number(r.lat), lon: Number(r.lon), name: r.display_name || q }))
+      .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+  }
+  async function geocodePhoton(q) {
+    const url = PHOTON + "?limit=5&q=" + encodeURIComponent(q);
+    const res = await fetchWithTimeout(url, { method: "GET" }, FETCH_TIMEOUT_MS);
+    if (!res.ok) throw new Error("Photon " + res.status);
+    const data = await res.json();
+    return ((data && data.features) || []).map((f) => {
+      const p = f.properties || {};
+      const c = (f.geometry && f.geometry.coordinates) || [];
+      const name = [p.name, p.street && (p.housenumber ? p.housenumber + " " + p.street : p.street), p.city, p.state, p.country]
+        .filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(", ");
+      return { lat: Number(c[1]), lon: Number(c[0]), name: name || q };
+    }).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+  }
+  async function geocode(q) {
+    const key = q.toLowerCase().replace(/\s+/g, " ").trim();
+    const cached = readGeoCache(key);
+    if (cached) return { results: cached, source: "cache" };
+    let results = [];
+    let source = "nominatim";
+    try {
+      results = await geocodeNominatim(q);
+    } catch (error) {
+      console.warn("Nominatim:", error);
+      results = null;
+    }
+    if (!results || !results.length) {
+      try {
+        const photon = await geocodePhoton(q);
+        if (photon.length || results === null) { results = photon; source = "photon"; }
+      } catch (error) {
+        console.warn("Photon:", error);
+        if (results === null) throw error;
+      }
+    }
+    if (results.length) writeGeoCache(key, results);
+    return { results, source };
+  }
+  function showMatches(results, chosen) {
+    matchesEl.replaceChildren();
+    if (results.length < 2) { matchesEl.hidden = true; return; }
+    const lead = document.createElement("span");
+    lead.textContent = "Other matches:";
+    matchesEl.append(lead);
+    results.forEach((r, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = shortPlace(r.name);
+      b.title = r.name;
+      b.setAttribute("aria-pressed", i === chosen ? "true" : "false");
+      b.addEventListener("click", () => {
+        showMatches(results, i);
+        search(r.lat, r.lon, "place", r.name);
+      });
+      matchesEl.append(b);
+    });
+    matchesEl.hidden = false;
+  }
+  let geoBusy = false;
+  placeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const q = placeInput.value.trim();
+    if (q.length < 2) {
+      setStatus("Type a city, address or place, then tap Search.", "error");
+      placeInput.focus();
+      return;
+    }
+    if (geoBusy) return;
+    geoBusy = true;
+    placeInput.blur(); // hide the phone keyboard so the results are visible
+    setBusy(true);
+    setStatus("Finding “" + q + "”…");
+    try {
+      const { results } = await geocode(q);
+      if (!results.length) {
+        setBusy(false);
+        setStatus("Couldn't find “" + q + "”. Try adding a city or state.", "error");
+        return;
+      }
+      showMatches(results, 0);
+      setBusy(false);
+      await search(results[0].lat, results[0].lon, "place", results[0].name);
+    } catch (error) {
+      setBusy(false);
+      setStatus("Place search is unavailable right now. Try Near me, or again in a moment.", "error");
+    } finally {
+      geoBusy = false;
+    }
+  });
+
+  /* ---------- sheet size and drag ---------- */
   const SHEET_STATES = ["peek", "mid", "full"];
   handle.addEventListener("click", () => {
+    if (handle.dataset.dragged === "1") { handle.dataset.dragged = ""; return; }
     const i = SHEET_STATES.indexOf(sheet.dataset.state || "peek");
     setSheet(SHEET_STATES[(i + 1) % SHEET_STATES.length]);
   });
+  sizeBtn.addEventListener("click", () => {
+    setSheet(sheet.dataset.state === "full" ? "mid" : "full");
+  });
 
+  // Drag the handle or the title row (not its buttons) to resize; the list itself scrolls normally.
   let drag = null;
-  handle.addEventListener("pointerdown", (event) => {
+  sheetTop.addEventListener("pointerdown", (event) => {
+    if (window.innerWidth >= 900) return;
+    if (event.target.closest("button:not(#sheet-handle), a, #matches")) return;
     drag = {
+      id: event.pointerId,
       startY: event.clientY,
       startH: sheet.getBoundingClientRect().height,
-      max: window.innerHeight - 86
+      max: window.innerHeight - 86,
+      moved: false
     };
-    handle.setPointerCapture(event.pointerId);
-    sheet.style.transition = "none";
+    sheetTop.setPointerCapture(event.pointerId);
   });
-  handle.addEventListener("pointermove", (event) => {
-    if (!drag) return;
-    const next = Math.min(drag.max, Math.max(140, drag.startH - (event.clientY - drag.startY)));
+  sheetTop.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.abs(dy) < 6) return;
+    if (!drag.moved) { drag.moved = true; sheet.style.transition = "none"; }
+    const next = Math.min(drag.max, Math.max(140, drag.startH - dy));
     sheet.style.height = next + "px";
   });
   function endDrag() {
     if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (!d.moved) return;
+    handle.dataset.dragged = "1";
+    setTimeout(() => { handle.dataset.dragged = ""; }, 350);
     const h = sheet.getBoundingClientRect().height;
-    const max = window.innerHeight - 86;
     sheet.style.transition = "";
     sheet.style.height = "";
-    if (h < max * 0.33) setSheet("peek");
-    else if (h < max * 0.7) setSheet("mid");
+    if (h < d.max * 0.33) setSheet("peek");
+    else if (h < d.max * 0.7) setSheet("mid");
     else setSheet("full");
-    drag = null;
   }
-  handle.addEventListener("pointerup", endDrag);
-  handle.addEventListener("pointercancel", endDrag);
+  sheetTop.addEventListener("pointerup", endDrag);
+  sheetTop.addEventListener("pointercancel", endDrag);
 
   panic.addEventListener("click", locate);
   gpsBtn.addEventListener("click", locate);
@@ -734,6 +909,17 @@
   });
 
   window.addEventListener("resize", updateMapPadding);
+  window.addEventListener("orientationchange", () => setTimeout(updateMapPadding, 250));
+  // Leaflet only measures its container on demand; re-measure whenever the map box changes size
+  // (desktop grid layout, sheet changes, address-bar show/hide), so tiles always cover it.
+  if ("ResizeObserver" in window) {
+    let pending = false;
+    new ResizeObserver(() => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => { pending = false; updateMapPadding(); });
+    }).observe(document.getElementById("map"));
+  }
   // Re-measure once the sheet's height transition finishes, so the zoom buttons and
   // attribution don't stay parked where the sheet was mid-animation.
   sheet.addEventListener("transitionend", (event) => {

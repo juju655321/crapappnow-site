@@ -51,6 +51,7 @@
       <li><b>Map tiles</b> come from <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'s tile servers (<a href="https://osmfoundation.org/wiki/Privacy_Policy">OSMF privacy policy</a>).</li>
       <li><b>Restroom data</b> comes from the OpenStreetMap <a href="https://wiki.openstreetmap.org/wiki/Overpass_API">Overpass API</a> (public servers run by volunteers, including overpass-api.de, overpass.kumi.systems and overpass.private.coffee). The request contains the map area around your search point.</li>
       <li>If those servers are busy, the app asks <a href="https://www.refugerestrooms.org/">Refuge Restrooms</a> for nearby restrooms instead, sending the same search point.</li>
+      <li><b>Place search</b>: if you type a city, address or place and tap Search, that text is sent to <a href="https://nominatim.org/">Nominatim</a>, the OpenStreetMap Foundation's geocoder (<a href="https://osmfoundation.org/wiki/Privacy_Policy">OSMF privacy policy</a>), to turn it into a map point. If Nominatim can't answer, it goes to <a href="https://photon.komoot.io/">Photon</a> by komoot instead. Searches happen only when you tap Search, and recent answers are kept on your device for a day so the same search isn't sent twice.</li>
       <li><b>Directions</b> open Apple Maps or Google Maps with the restroom's coordinates only when you tap Directions. Those apps have their own privacy policies.</li>
       <li>On the website only, the map library (Leaflet) loads from the unpkg CDN. The phone apps bundle it.</li>
     </ul>
@@ -70,7 +71,7 @@
     <p>Restroom locations, hours, fees and accessibility come from community map data and may be wrong or out of date. Open-now labels are unverified. Please <a href="https://www.openstreetmap.org/fixthemap">fix the map</a> if you spot a mistake.</p>
 
     <h2>Credits</h2>
-    <p>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Some results from <a href="https://www.refugerestrooms.org/">Refuge Restrooms</a>. Map display by <a href="https://leafletjs.com/">Leaflet</a> (BSD-2-Clause). Apps built with <a href="https://capacitorjs.com/">Capacitor</a> (MIT).</p>
+    <p>Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Place search by Nominatim and Photon, using OpenStreetMap data. Some results from <a href="https://www.refugerestrooms.org/">Refuge Restrooms</a>. Map display by <a href="https://leafletjs.com/">Leaflet</a> (BSD-2-Clause). Apps built with <a href="https://capacitorjs.com/">Capacitor</a> (MIT).</p>
 
     <h2>Changes and contact</h2>
     <p>If this policy changes, we'll update this page and the date above. Questions: <a href="mailto:juju655321@gmail.com">juju655321@gmail.com</a>.</p>
