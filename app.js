@@ -402,8 +402,18 @@
   function showOnMap(id) {
     const marker = markersById.get(id);
     if (!marker) return;
-    const pad = sheetPad();
-    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 16), { animate: true, paddingBottomRight: [0, pad] });
+    // The map runs under the top buttons and the bottom sheet on phones, so aim the marker
+    // at the visible strip between them (a bit low, leaving room for the popup above it).
+    const zoom = Math.max(map.getZoom(), 16);
+    const size = map.getSize();
+    const top = topPad();
+    // A peeking sheet grows to "mid" (46% tall) right after this, so plan for that height.
+    const phonePeek = window.innerWidth < 900 && sheet.dataset.state === "peek";
+    const bottom = phonePeek ? Math.round((sheet.offsetParent || document.body).clientHeight * 0.46) : sheetPad();
+    const targetY = top + Math.max(0, size.y - top - bottom) * 0.72;
+    const pt = map.project(marker.getLatLng(), zoom).add([0, size.y / 2 - targetY]);
+    map.setView(map.unproject(pt, zoom), zoom, { animate: false });
+    updatePopupPadding();
     marker.openPopup();
     listEl.querySelectorAll(".card.is-active").forEach((n) => n.classList.remove("is-active"));
     const card = listEl.querySelector('[data-id="' + CSS.escape(id) + '"]');
@@ -412,6 +422,26 @@
       card.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
     if (window.innerWidth < 900 && sheet.dataset.state === "peek") setSheet("mid");
+  }
+
+  function topPad() {
+    if (window.innerWidth >= 900) return 0;
+    const controls = document.querySelector(".controls");
+    const mapEl = document.getElementById("map");
+    if (!controls || !mapEl) return 0;
+    return Math.max(0, controls.getBoundingClientRect().bottom - mapEl.getBoundingClientRect().top + 8);
+  }
+
+  function updatePopupPadding() {
+    const tl = L.point(12, topPad() + 8);
+    const br = L.point(12, sheetPad() + 8);
+    markersById.forEach((m) => {
+      const popup = m.getPopup && m.getPopup();
+      if (popup) {
+        popup.options.autoPanPaddingTopLeft = tl;
+        popup.options.autoPanPaddingBottomRight = br;
+      }
+    });
   }
 
   function sheetPad() {
@@ -522,8 +552,9 @@
     if (opts.fit !== false && bounds.length) {
       const fit = L.latLngBounds(bounds);
       if (youMarker) fit.extend(youMarker.getLatLng());
-      map.fitBounds(fit.pad(0.18), { paddingBottomRight: [0, sheetPad()] });
+      map.fitBounds(fit.pad(0.18), { paddingTopLeft: [0, topPad()], paddingBottomRight: [0, sheetPad()] });
     }
+    updatePopupPadding();
   }
 
   function updateMapPadding() {
@@ -534,6 +565,7 @@
     } else if (zoom) {
       zoom.style.marginBottom = "";
     }
+    updatePopupPadding();
   }
 
   function setSheet(state) {
@@ -702,6 +734,11 @@
   });
 
   window.addEventListener("resize", updateMapPadding);
+  // Re-measure once the sheet's height transition finishes, so the zoom buttons and
+  // attribution don't stay parked where the sheet was mid-animation.
+  sheet.addEventListener("transitionend", (event) => {
+    if (event.target === sheet && event.propertyName === "height") updateMapPadding();
+  });
   window.addEventListener("load", updateMapPadding);
   setTimeout(updateMapPadding, 300);
 
