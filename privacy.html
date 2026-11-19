@@ -14,6 +14,8 @@
     body{margin:0;font:16px/1.55 system-ui,"Segoe UI",sans-serif;color:#153d35;background:#eef5f1}
     header{background:#15483b;color:#fff;padding:calc(14px + env(safe-area-inset-top,0px)) max(20px,calc(env(safe-area-inset-right,0px) + 8px)) 14px max(20px,calc(env(safe-area-inset-left,0px) + 8px))}
     header a{color:#fff;text-decoration:none;font-weight:800;font-size:1.25rem}
+    header a.brand{display:inline-flex;align-items:center;gap:10px}
+    header a.brand img{border-radius:8px;flex:none}
     header p{margin:2px 0 0;font-size:13px;opacity:.9}
     header p a{font-size:inherit;font-weight:600;text-decoration:underline}
     main{max-width:42rem;margin:0 auto;padding:24px max(20px,calc(env(safe-area-inset-right,0px) + 8px)) calc(56px + env(safe-area-inset-bottom,0px)) max(20px,calc(env(safe-area-inset-left,0px) + 8px))}
@@ -26,7 +28,7 @@
 </head>
 <body>
   <header>
-    <a href="./">🚽 CRAPAPP NOW!</a>
+    <a class="brand" href="./"><img src="icons/logo-header.png" width="34" height="34" alt="">CRAPAPP NOW!</a>
     <p>by <a href="https://www.jupiterrockets.com/">Jupiter Rockets</a></p>
   </header>
   <main>
